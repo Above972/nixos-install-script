@@ -122,11 +122,22 @@
   };
 
   # --- Login manager: greetd + tuigreet, launches Hyprland directly -----------
+  # Launch via `start-hyprland`, not the `Hyprland` binary: starting the binary
+  # directly makes it warn "Hyprland was started without start-hyprland. This
+  # is strongly discouraged", because the wrapper is what sets the session up.
+  # programs.hyprland.enable puts it in environment.systemPackages, so it is on
+  # the greeter's PATH.
+  # For fuller systemd integration there is programs.hyprland.withUWSM = true,
+  # which changes the command to `uwsm start hyprland` — a separate change.
+  #
+  # It is `pkgs.tuigreet`, not `pkgs.greetd.tuigreet`: the package now lives in
+  # pkgs/by-name, so it is top-level. Older snippets all use the nested path
+  # and fail with "attribute 'tuigreet' missing".
   services.greetd = {
     enable = true;
     settings = {
       default_session = {
-        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland";
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd start-hyprland";
         user = "greeter";
       };
     };

@@ -9,6 +9,19 @@
   wayland.windowManager.hyprland = {
     enable = true;
     xwayland.enable = true;
+
+    # Pin the config language instead of inheriting it from stateVersion.
+    # home-manager flipped this default from "hyprlang" to "lua" at
+    # stateVersion 26.05, so the settings below — which are hyprlang, with
+    # "$mod"-style variables — were being written to hyprland.lua, where a
+    # leading "$" is a syntax error. Hyprland then came up in emergency mode
+    # with "<name> expected near '$'" and no keybinds registered.
+    #
+    # "hyprlang" keeps the syntax these settings are actually written in.
+    # Switching to "lua" is a real rewrite (every attribute becomes an
+    # hl.<name>(...) call), not a flag flip — worth doing deliberately later.
+    configType = "hyprlang";
+
     settings = {
       monitor = [ ",preferred,auto,1" ];
 

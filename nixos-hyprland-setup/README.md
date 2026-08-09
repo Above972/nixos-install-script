@@ -16,6 +16,8 @@ Five files, flat in one folder (no subfolders — easy to copy to a USB stick
 or paste into a gist):
 
 - `install.sh` — the installer, run from the NixOS live ISO
+- `update-config.sh` — re-applies this flake onto an already-installed system
+  and rebuilds; reuses the values from `/etc/nixos`, so nothing is retyped
 - `flake.nix` — nixpkgs + home-manager wiring
 - `configuration.nix` — system config (NVIDIA Optimus/PRIME, Hyprland,
   greetd, pipewire, dual-boot-safe bootloader, users, packages)
@@ -220,13 +222,29 @@ nvidia-smi              # should list the RTX 3050
 
 ## 6. Changing the config later
 
-Keep the flake somewhere permanent and rebuild from it:
+**To pull updates from this repo** onto an installed machine — including when
+the desktop is broken and you are on a TTY (`Ctrl+Alt+F2`):
 
 ```sh
-cp -r ~/nixos-hyprland-setup ~/nixos-config
-cd ~/nixos-config
-# edit configuration.nix / home.nix, then:
-sudo nixos-rebuild switch --flake ~/nixos-config#nixhypr
+git clone https://github.com/Above972/nixos-install-script.git ~/nixos-install-script
+sudo bash ~/nixos-install-script/nixos-hyprland-setup/update-config.sh
+```
+
+`update-config.sh` reads the hostname, username, timezone, keymap and GPU bus
+IDs back out of `/etc/nixos` — the values `install.sh` filled in the first
+time — so none of them have to be retyped and the bus IDs cannot drift from
+the hardware. It backs up the current `/etc/nixos` files, refuses to rebuild
+if any placeholder is left unsubstituted, and then runs `nixos-rebuild
+switch`. `hardware-configuration.nix` is never touched.
+
+To roll back: copy the files out of the backup directory it prints, or pick
+the previous generation in the boot menu.
+
+**To make your own changes**, edit `/etc/nixos/configuration.nix` and
+`/etc/nixos/home.nix` directly and rebuild:
+
+```sh
+sudo nixos-rebuild switch --flake /etc/nixos#nixhypr
 ```
 
 ## NVIDIA Optimus notes
@@ -323,6 +341,17 @@ and update `configuration.nix` if they don't match.
 - **Black screen / Hyprland won't start.** Switch to a TTY with
   `Ctrl+Alt+F2`, then `journalctl -b -u greetd` and `nvidia-smi`. See the
   Optimus notes about offload vs sync mode.
+- **`Emergency mode tripped: a lua config error resulted in no binds being
+  registered` / `hyprland.lua:5: <name> expected near '$'`.** Fixed on
+  2026-08-09. home-manager changed `wayland.windowManager.hyprland.configType`
+  from `hyprlang` to `lua` at `stateVersion` 26.05, so hyprlang settings
+  (`"$mod" = "SUPER"` and friends) were being written into `hyprland.lua`,
+  where a leading `$` is a syntax error. `configType` is now pinned to
+  `hyprlang` explicitly rather than inherited from `stateVersion`. Recover
+  with `update-config.sh` above.
+- **`Hyprland was started without start-hyprland`.** Also fixed on
+  2026-08-09 — greetd launched the `Hyprland` binary directly instead of the
+  `start-hyprland` wrapper that sets the session up.
 - **`/boot` on a different disk than `/`.** Fine, but both disks must stay
   installed. The installer warns when this is the case.
 - **Build fails pulling nixos-unstable.** Unstable moves fast; re-run, or pin
