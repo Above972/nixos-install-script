@@ -185,9 +185,13 @@
 
   security.polkit.enable = true;
 
+  # `noto-fonts-emoji` was renamed to `noto-fonts-color-emoji`, and the alias
+  # became a hard throw in nixpkgs on 2025-10-27 — evaluation aborts with
+  # "'noto-fonts-emoji' has been renamed to/replaced by 'noto-fonts-color-emoji'".
+  # (Related rename in the same block, not used here: noto-fonts-extra -> noto-fonts.)
   fonts.packages = with pkgs; [
     noto-fonts
-    noto-fonts-emoji
+    noto-fonts-color-emoji
     nerd-fonts.jetbrains-mono
   ];
 

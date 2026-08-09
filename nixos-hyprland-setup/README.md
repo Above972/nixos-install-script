@@ -356,6 +356,14 @@ and update `configuration.nix` if they don't match.
 - **`Hyprland was started without start-hyprland`.** Also fixed on
   2026-08-09 — greetd launched the `Hyprland` binary directly instead of the
   `start-hyprland` wrapper that sets the session up.
+- **`'<pkg>' has been renamed to/replaced by '<other>'`, thrown from
+  `pkgs/top-level/aliases.nix`.** nixpkgs turns old package names into hard
+  throws after a grace period, so a config that worked six months ago stops
+  evaluating. Two of these were hit here and are fixed:
+  `pkgs.greetd.tuigreet` → `pkgs.tuigreet` (moved to `pkgs/by-name`, so it is
+  top-level now) and `noto-fonts-emoji` → `noto-fonts-color-emoji`. When you
+  see one, the fix is in the message; the useful part of a nix trace is the
+  **first** error, not the last.
 - **`/boot` on a different disk than `/`.** Fine, but both disks must stay
   installed. The installer warns when this is the case.
 - **Build fails pulling nixos-unstable.** Unstable moves fast; re-run, or pin
