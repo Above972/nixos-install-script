@@ -95,7 +95,19 @@ fi
 # Rebuild
 # ---------------------------------------------------------------------------
 log "Rebuilding: nixos-rebuild switch --flake $TARGET#$HOSTNAME_V"
-nixos-rebuild switch --flake "$TARGET#$HOSTNAME_V"
+if ! nixos-rebuild switch --flake "$TARGET#$HOSTNAME_V" --show-trace; then
+  echo
+  warn "nixos-rebuild failed — the real error is in the output above."
+  echo "    Your running system is UNCHANGED; a failed switch activates nothing."
+  echo "    The previous config files are in $BACKUP."
+  echo
+  echo "    To put them back:"
+  echo "      cp $BACKUP/*.nix $TARGET/"
+  echo
+  echo "    If you are reporting this, the useful part is the FIRST error line,"
+  echo "    not the last — nix prints the trace innermost-first."
+  die "Rebuild failed."
+fi
 
 log "Done."
 echo "    Log out of the greeter (or reboot) to get a fresh Hyprland session."

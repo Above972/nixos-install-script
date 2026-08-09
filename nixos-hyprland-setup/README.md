@@ -21,7 +21,12 @@ or paste into a gist):
 - `flake.nix` — nixpkgs + home-manager wiring
 - `configuration.nix` — system config (NVIDIA Optimus/PRIME, Hyprland,
   greetd, pipewire, dual-boot-safe bootloader, users, packages)
-- `home.nix` — the Hyprland session itself (keybinds, waybar, mako, kitty)
+- `home.nix` — the Hyprland session itself (keybinds, waybar, mako, kitty).
+  Written for Hyprland's **Lua** config format (`hyprland.lua`), which
+  replaced hyprlang in 0.55. Option blocks go through home-manager's
+  `settings` (each attribute becomes an `hl.<name>(...)` call); keybinds are
+  raw Lua in `extraConfig`, because `hl.bind` takes a dispatcher function
+  call, not a string
 - `README.md` — this file
 
 Placeholders like `@HOSTNAME@` are filled in automatically by `install.sh`;
@@ -343,12 +348,11 @@ and update `configuration.nix` if they don't match.
   Optimus notes about offload vs sync mode.
 - **`Emergency mode tripped: a lua config error resulted in no binds being
   registered` / `hyprland.lua:5: <name> expected near '$'`.** Fixed on
-  2026-08-09. home-manager changed `wayland.windowManager.hyprland.configType`
-  from `hyprlang` to `lua` at `stateVersion` 26.05, so hyprlang settings
-  (`"$mod" = "SUPER"` and friends) were being written into `hyprland.lua`,
-  where a leading `$` is a syntax error. `configType` is now pinned to
-  `hyprlang` explicitly rather than inherited from `stateVersion`. Recover
-  with `update-config.sh` above.
+  2026-08-09. Hyprland deprecated hyprlang in favour of Lua in 0.55, and
+  home-manager's `configType` follows suit from `stateVersion` 26.05 — so
+  hyprlang settings (`"$mod" = "SUPER"` and friends) were being written into
+  `hyprland.lua`, where a leading `$` is a syntax error. `home.nix` is now
+  written for Lua. Recover with `update-config.sh` above.
 - **`Hyprland was started without start-hyprland`.** Also fixed on
   2026-08-09 — greetd launched the `Hyprland` binary directly instead of the
   `start-hyprland` wrapper that sets the session up.
