@@ -26,6 +26,17 @@
   i18n.defaultLocale = "en_US.UTF-8";
   console.keyMap = "@KEYMAP@";
 
+  # --- Unfree packages ----------------------------------------------------------
+  # The proprietary NVIDIA driver is unfree, so without this nixos-install dies
+  # during evaluation with "Refusing to evaluate package 'nvidia-x11-...'
+  # because it has an unfree license (unfreeRedistributable)".
+  # NIXPKGS_ALLOW_UNFREE=1 is NOT a substitute: it covers one invocation of the
+  # nix CLI, not the system configuration, and flakes ignore it entirely.
+  # To be stricter, replace this with a predicate allowing only the driver:
+  #   nixpkgs.config.allowUnfreePredicate = pkg:
+  #     builtins.elem (pkgs.lib.getName pkg) [ "nvidia-x11" "nvidia-settings" ];
+  nixpkgs.config.allowUnfree = true;
+
   # --- NVIDIA (RTX 3050 Laptop + Intel iGPU = Optimus hybrid graphics) --------
   # `open = false` (proprietary kernel modules) is the safer default for a
   # laptop Optimus setup — the open modules (Turing+, which covers Ampere/

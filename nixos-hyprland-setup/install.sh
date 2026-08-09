@@ -482,6 +482,30 @@ if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART:-}" ]]; then
 fi
 log "Mounted: / -> $ROOT_PART   /boot -> $ESP_PART"
 
+# Check the ESP has room BEFORE nixos-install spends an hour downloading.
+# Windows ESPs are routinely 100MiB, and every NixOS generation puts a kernel
+# and an NVIDIA-laden initrd there. Running out shows up at the very end as
+# "No space left on device" while installing the bootloader.
+esp_df_mib() { df -BM --output="$1" /mnt/boot 2>/dev/null | tail -n1 | tr -dc '0-9'; }
+ESP_SIZE_MIB="$(esp_df_mib size)"; ESP_SIZE_MIB="${ESP_SIZE_MIB:-0}"
+ESP_FREE_MIB="$(esp_df_mib avail)"; ESP_FREE_MIB="${ESP_FREE_MIB:-0}"
+if (( ESP_SIZE_MIB > 0 )); then
+  log "ESP capacity: ${ESP_SIZE_MIB}MiB total, ${ESP_FREE_MIB}MiB free"
+  if (( ESP_FREE_MIB < 300 )); then
+    warn "Only ${ESP_FREE_MIB}MiB free on the shared ESP — that is tight."
+    echo "    Each generation needs roughly 100MiB of kernel + initrd here."
+    echo "    Ways to make it fit, in order of least effort:"
+    echo "      - lower boot.loader.systemd-boot.configurationLimit in"
+    echo "        configuration.nix (currently 10) to 2, and re-run this script"
+    echo "      - remove leftover vendor directories under /mnt/boot/EFI from"
+    echo "        operating systems you no longer have (never EFI/Microsoft)"
+    echo "      - enlarge the ESP with a partition editor"
+    echo
+    read -rp "Continue anyway? [y/N]: " ESP_OK
+    [[ "${ESP_OK,,}" == "y" ]] || die "Aborted before downloading anything."
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # 5. Detect Intel/NVIDIA PCI bus IDs for PRIME offload
 # ---------------------------------------------------------------------------

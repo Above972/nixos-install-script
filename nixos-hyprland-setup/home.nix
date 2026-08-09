@@ -112,9 +112,19 @@
   };
 
   # --- Terminal --------------------------------------------------------------------
+  # `font.name` has no default in home-manager's font type, and setting any
+  # sub-option instantiates the whole submodule — so `font.size = 11;` on its
+  # own fails evaluation with "The option `programs.kitty.font.name' is used
+  # but not defined". Name the font explicitly; it is the Nerd Font already
+  # installed system-wide in configuration.nix, so the glyphs waybar and the
+  # shell prompt expect are actually present.
   programs.kitty = {
     enable = true;
-    font.size = 11;
+    font = {
+      name = "JetBrainsMono Nerd Font";
+      package = pkgs.nerd-fonts.jetbrains-mono;
+      size = 11;
+    };
   };
 
   home.packages = with pkgs; [

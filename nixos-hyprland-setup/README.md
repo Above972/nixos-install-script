@@ -288,6 +288,20 @@ and update `configuration.nix` if they don't match.
 - **"already has a 'nixos-root' partition ... Refusing to re-partition."**
   Only reachable if you declined the resume offer and then chose that same
   disk anyway. Re-run `bash install.sh` and answer `1` at the resume prompt.
+- **`error: Refusing to evaluate package 'nvidia-x11-...' because it has an
+  unfree license`.** Fixed on 2026-08-09 by `nixpkgs.config.allowUnfree = true`
+  in `configuration.nix`. Note that the `NIXPKGS_ALLOW_UNFREE=1` the error
+  message suggests does not help here — it applies to a single nix CLI
+  invocation, not to the system configuration, and flakes ignore it.
+- **`The option 'programs.kitty.font.name' is used but not defined`.** Also
+  fixed on 2026-08-09. `font.name` has no default in home-manager, so setting
+  only `font.size` left it undefined.
+- **`No space left on device` while installing the bootloader**, after the
+  whole download finished. The ESP is shared with Windows and is often only
+  100MiB, while each generation stores a kernel and initrd there. The
+  installer now checks this before downloading anything. Lower
+  `boot.loader.systemd-boot.configurationLimit`, clear out vendor directories
+  in `/boot/EFI` you no longer need, or enlarge the ESP.
 - **The script exits silently right after "Creating swap + root partitions".**
   A bug in versions before 2026-08-09: the loop waiting for udev to publish
   the new partitions inherited a failing exit status under `set -e` and killed
