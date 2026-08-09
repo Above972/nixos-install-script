@@ -1,0 +1,9 @@
+# Git for Windows defaults to core.autocrlf=true, which would check these out
+# with CRLF endings. A shell script with CRLF fails on Linux with a confusing
+# "bad interpreter: /usr/bin/env bash^M", and re-zipping from such a checkout
+# would ship the breakage to the live ISO.
+*.sh  text eol=lf
+*.nix text eol=lf
+*.md  text eol=lf
+
+*.zip binary
