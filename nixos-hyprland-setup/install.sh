@@ -33,8 +33,12 @@
 #   TIMEZONE=Asia/Yekaterinburg KEYMAP=us SWAP_GIB=8 ./install.sh
 #
 # Resume after a failure (partitions already created — do NOT re-partition):
-#   SKIP_PARTITIONING=1 DISK=/dev/nvme1n1 USERNAME=kms \
-#   TIMEZONE=Asia/Yekaterinburg ./install.sh
+#   ./install.sh          — it finds the earlier root on any disk and offers
+#                           to resume; answer [1]. No device path to retype,
+#                           which matters because disk names change between
+#                           boots.
+#   Forcing it non-interactively still works:
+#   SKIP_PARTITIONING=1 USERNAME=kms TIMEZONE=Asia/Yekaterinburg ./install.sh
 #
 # Run from inside the project directory (same folder as flake.nix).
 
@@ -84,6 +88,40 @@ part_entry_name() {
     || lsblk -no PARTLABEL "$1" 2>/dev/null | head -n1
 }
 
+all_disks() { lsblk -dlno PATH,TYPE | awk '$2 == "disk" { print $1 }'; }
+
+# Locate a root partition left behind by an earlier run of this script, on ANY
+# disk. Kernel disk names (nvme0n1 vs nvme1n1) are assigned in probe order and
+# genuinely swap between boots, so a device path written down during the last
+# attempt cannot be trusted on this one. The partition itself carries a stable
+# GPT name, so search by that and derive the disk from whatever it is on now.
+find_existing_root() {
+  local d p fstype fslabel
+  for d in $(all_disks); do
+    for p in $(disk_parts "$d"); do
+      if [[ "$(part_entry_name "$p")" == "$ROOT_LABEL" ]]; then
+        printf '%s' "$p"
+        return 0
+      fi
+    done
+  done
+  # Older versions of this script used the GPT name "root" and only set the
+  # ext4 filesystem label, so fall back to probing for that.
+  for d in $(all_disks); do
+    for p in $(disk_parts "$d"); do
+      fstype="$(blkid -p -o value -s TYPE "$p" 2>/dev/null || true)"
+      fslabel="$(blkid -p -o value -s LABEL "$p" 2>/dev/null || true)"
+      if [[ "$fstype" == "ext4" && "$fslabel" == "nixos" ]]; then
+        printf '%s' "$p"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+disk_of() { printf '/dev/%s' "$(lsblk -no PKNAME "$1")"; }
+
 # Resolve a partition on a specific disk by its GPT partition name.
 part_by_label() {
   local disk="$1" label="$2" p
@@ -120,14 +158,69 @@ fi
 # ---------------------------------------------------------------------------
 # 1. Gather configuration
 # ---------------------------------------------------------------------------
-log "Available disks:"
-lsblk -dpno NAME,SIZE,MODEL | grep -v '^/dev/loop' || true
-echo
-warn "Disk names (nvme0n1 vs nvme1n1) can SWAP BETWEEN BOOTS. Identify your"
-echo "    disk by SIZE and MODEL above, not by a name you remember."
-
 DISK="${DISK:-}"
-[[ -z "$DISK" ]] && read -rp "Disk to install NixOS onto (e.g. /dev/nvme1n1): " DISK
+SKIP_PARTITIONING="${SKIP_PARTITIONING:-0}"
+ROOT_PART="${ROOT_PART:-}"
+SWAP_PART="${SWAP_PART:-}"
+
+# --- Offer to resume an earlier attempt -------------------------------------
+# A previous run that died after partitioning leaves a usable root behind.
+# Finding it automatically matters more than it looks: the alternative is the
+# operator retyping a device path from notes, and that path may point at a
+# different disk after a reboot.
+if [[ "$SKIP_PARTITIONING" != "1" && -z "$ROOT_PART" && -z "$DISK" ]]; then
+  FOUND_ROOT="$(find_existing_root || true)"
+  if [[ -n "$FOUND_ROOT" ]]; then
+    FOUND_DISK="$(disk_of "$FOUND_ROOT")"
+    warn "Found a NixOS root partition from an earlier attempt:"
+    echo "    $FOUND_ROOT  (on $FOUND_DISK)"
+    echo
+    echo "    [1] Resume — install onto it, create no partitions (recommended)"
+    echo "    [2] Ignore it and partition a disk from scratch"
+    echo
+    read -rp "Choice [1]: " RESUME_CHOICE
+    if [[ -z "$RESUME_CHOICE" || "$RESUME_CHOICE" == "1" ]]; then
+      SKIP_PARTITIONING=1
+      ROOT_PART="$FOUND_ROOT"
+      DISK="$FOUND_DISK"
+      log "Resuming on $ROOT_PART — nothing will be repartitioned."
+    fi
+  fi
+fi
+
+# --- Pick the target disk ---------------------------------------------------
+if [[ "$SKIP_PARTITIONING" == "1" ]]; then
+  # On resume the disk name is not information the operator needs to supply:
+  # the partition is found by its GPT name and the disk follows from it.
+  if [[ -z "$DISK" ]]; then
+    [[ -n "$ROOT_PART" ]] || ROOT_PART="$(find_existing_root || true)"
+    [[ -b "${ROOT_PART:-}" ]] \
+      || die "SKIP_PARTITIONING=1 but no existing NixOS root was found on any disk. Pass ROOT_PART=/dev/... explicitly."
+    DISK="$(disk_of "$ROOT_PART")"
+    log "Existing root $ROOT_PART is on $DISK"
+  fi
+elif [[ -z "$DISK" ]]; then
+  log "Available disks:"
+  DISK_LIST=()
+  while read -r dpath dsize dmodel; do
+    DISK_LIST+=("$dpath")
+    printf '    [%d] %-16s %-9s %s\n' "${#DISK_LIST[@]}" "$dpath" "$dsize" "$dmodel"
+  done < <(lsblk -dpno NAME,SIZE,MODEL | grep -v '^/dev/loop' || true)
+  [[ ${#DISK_LIST[@]} -gt 0 ]] || die "No disks detected."
+  echo
+  warn "Disk names (nvme0n1 vs nvme1n1) can SWAP BETWEEN BOOTS. Pick by SIZE"
+  echo "    and MODEL above, not by a name you remember from last time."
+  echo
+  read -rp "Disk to install NixOS onto — number [1-${#DISK_LIST[@]}], or a full /dev/... path: " DISK_CHOICE
+  if [[ "$DISK_CHOICE" =~ ^[0-9]+$ ]]; then
+    (( DISK_CHOICE >= 1 && DISK_CHOICE <= ${#DISK_LIST[@]} )) \
+      || die "There is no disk [$DISK_CHOICE] in the list above."
+    DISK="${DISK_LIST[$(( DISK_CHOICE - 1 ))]}"
+    log "Selected $DISK"
+  else
+    DISK="$DISK_CHOICE"
+  fi
+fi
 [[ -b "$DISK" ]] || die "$DISK is not a block device."
 
 # HOSTNAME and USERNAME cannot be read as plain shell variables here. Bash
@@ -157,7 +250,8 @@ TIMEZONE="${TIMEZONE:-Etc/UTC}"
 
 KEYMAP="${KEYMAP:-us}"
 SWAP_GIB="${SWAP_GIB:-8}"
-SKIP_PARTITIONING="${SKIP_PARTITIONING:-0}"
+# NB: SKIP_PARTITIONING is set far above, before the disk is chosen — the
+# resume prompt may have turned it on, so do not re-default it here.
 
 # ---------------------------------------------------------------------------
 # 2. Find the existing ESP — on ANY disk, not just the target one.
@@ -258,10 +352,10 @@ else
   if [[ -n "$EXISTING_ROOT" ]]; then
     warn "$DISK already has a '$ROOT_LABEL' partition ($EXISTING_ROOT) from an earlier run."
     echo "    Creating another pair would risk formatting the wrong partition."
-    echo "    To continue the install using what already exists, re-run as:"
     echo
-    echo "      SKIP_PARTITIONING=1 DISK=$DISK USERNAME=$NIX_USERNAME \\"
-    echo "        TIMEZONE=$TIMEZONE HOSTNAME=$NIX_HOSTNAME ./install.sh"
+    echo "    To continue the install using what already exists, just re-run"
+    echo "      ./install.sh"
+    echo "    and answer [1] when it offers to resume."
     echo
     echo "    To start over instead, delete those partitions first with:"
     echo "      parted $DISK print        # note the numbers"

@@ -65,11 +65,21 @@ echo "nameserver 1.1.1.1" > /etc/resolv.conf
 
 ## 3. Get this project onto the live system
 
-You need a **second, ordinary USB stick** — you cannot copy files onto the
-NixOS installer stick, because it was written as a raw disk image and isn't a
-writable filesystem from Windows afterwards.
+**Option A — clone it (shortest, and nothing to copy):**
 
-**Option A — second USB stick (most reliable):**
+```sh
+nix-shell -p git --run "git clone https://github.com/Above972/nixos-install-script.git"
+cd nixos-install-script/nixos-hyprland-setup
+```
+
+The options below matter only when the live system has no network yet — but
+note the installer needs network anyway, so fix that first if you can.
+
+You cannot copy files onto the NixOS installer stick itself: it was written as
+a raw disk image and isn't a writable filesystem from Windows afterwards. So
+the offline route needs a **second, ordinary USB stick**.
+
+**Option B — second USB stick:**
 
 ```sh
 lsblk                          # find the new device: usually sda, sdb...
@@ -83,14 +93,10 @@ If `mount` says **"Can't open blockdev"**, that device does not exist — the
 stick isn't plugged in or wasn't detected. Run `lsblk` before and after
 inserting it and compare; don't guess the name.
 
-**Option B — download the zip (no second stick):** upload it to your own
-cloud storage, then get a *direct file* link (a link to a **folder** will not
-work with `curl`):
+**Option C — download the zip without git:**
 
 ```sh
-# Google Drive: share the FILE, take the ID out of .../file/d/<ID>/view
-FILE_ID=<paste-the-id>
-curl -L -o setup.zip "https://drive.usercontent.google.com/download?id=$FILE_ID&export=download&confirm=t"
+curl -L -o setup.zip https://github.com/Above972/nixos-install-script/raw/main/nixos-hyprland-setup_2.zip
 
 # Always verify before unpacking:
 nix-shell -p file --run "file setup.zip"     # must say "Zip archive data"
@@ -104,25 +110,31 @@ not the archive — `cat setup.zip` will show you which error.
 ## 4. Run the installer
 
 ```sh
-chmod +x install.sh
-./install.sh
+bash install.sh
 ```
+
+(`bash install.sh` rather than `./install.sh` — it runs straight from a fresh
+clone or unzip, with no `chmod +x` step.)
 
 It walks through:
 
-1. **Lists your disks** with size and model. Pick by size/model, **not by a
-   remembered name** — `nvme0n1` and `nvme1n1` can and do swap between boots.
-2. **Finds the existing ESP across all disks**, preferring the one that
+1. **Offers to resume** if an earlier attempt already created partitions — it
+   searches every disk for them, so nothing has to be typed.
+2. **Lists your disks** with size and model as a numbered menu; answer with the
+   number. Pick by size/model, **not by a remembered name** — `nvme0n1` and
+   `nvme1n1` can and do swap between boots, which is exactly why the menu is
+   numbered and why resume searches by partition name instead of device path.
+3. **Finds the existing ESP across all disks**, preferring the one that
    actually contains `/EFI/Microsoft`. Windows and Linux frequently live on
    different physical disks; the ESP is reused and never formatted.
-3. **Shows every free region** and picks the largest, rounded to whole MiB.
-4. **Prints the exact plan and waits for you to type `YES`.** Nothing is
+4. **Shows every free region** and picks the largest, rounded to whole MiB.
+5. **Prints the exact plan and waits for you to type `YES`.** Nothing is
    written before that.
-5. Creates swap + ext4 root **inside that region only**, wipes stale
+6. Creates swap + ext4 root **inside that region only**, wipes stale
    filesystem signatures, formats, and mounts with explicit `-t ext4`/`-t vfat`.
-6. Detects your Intel/NVIDIA PCI bus IDs from `lspci`, fills in the templates,
+7. Detects your Intel/NVIDIA PCI bus IDs from `lspci`, fills in the templates,
    verifies no placeholder is left, then runs `nixos-install`.
-7. Prompts for your user's password.
+8. Prompts for your user's password.
 
 Prompts can be pre-filled as environment variables: `DISK`, `HOSTNAME`,
 `USERNAME`, `TIMEZONE`, `KEYMAP`, `SWAP_GIB` (default 8), and
@@ -141,18 +153,30 @@ TIMEZONE=Asia/Yekaterinburg KEYMAP=us SWAP_GIB=8 ./install.sh
 ### Resuming after a failure
 
 If it created the partitions but died later (network dropped, build failed),
-**do not re-run it plainly** — it would append a second pair of partitions.
-It now refuses to do that and tells you to resume instead:
+just run it again:
 
 ```sh
-SKIP_PARTITIONING=1 DISK=/dev/nvme1n1 USERNAME=kms \
-  TIMEZONE=Asia/Yekaterinburg HOSTNAME=nixhypr ./install.sh
+bash install.sh
 ```
+
+It searches **every disk** for the root partition it made last time, shows
+where it found it, and offers to resume — answer `1`. It never silently
+appends a second pair of partitions.
+
+Searching by partition name rather than device path is deliberate: `nvme0n1`
+and `nvme1n1` are assigned in probe order and swap between boots, so a path
+noted down during the last attempt may point at the wrong disk on this one.
 
 Resume reuses the existing root/swap (it recognises both this version's
 `nixos-root`/`nixos-swap` names and older `root`/`swap` ones) and skips
-straight to installing. You can also force specific devices with
-`ROOT_PART=/dev/... SWAP_PART=/dev/...`.
+straight to installing. To drive it non-interactively, `SKIP_PARTITIONING=1`
+still works and no longer needs `DISK`:
+
+```sh
+SKIP_PARTITIONING=1 USERNAME=kms TIMEZONE=Asia/Yekaterinburg ./install.sh
+```
+
+You can also force specific devices with `ROOT_PART=/dev/... SWAP_PART=/dev/...`.
 
 ### Reusing a disk that still has an old Linux on it
 
@@ -262,7 +286,13 @@ and update `configuration.nix` if they don't match.
 - **"No free space on ..."** You haven't shrunk Windows yet, or an old Linux
   still fills the disk — see "Reusing a disk that still has an old Linux".
 - **"already has a 'nixos-root' partition ... Refusing to re-partition."**
-  Expected on a second run. Resume with `SKIP_PARTITIONING=1` (above).
+  Only reachable if you declined the resume offer and then chose that same
+  disk anyway. Re-run `bash install.sh` and answer `1` at the resume prompt.
+- **The script exits silently right after "Creating swap + root partitions".**
+  A bug in versions before 2026-08-09: the loop waiting for udev to publish
+  the new partitions inherited a failing exit status under `set -e` and killed
+  the script instead of retrying. Update, then resume — the partitions from
+  that run are fine and will be reused.
 - **`mount: wrong fs type, bad option, bad superblock` / `bogus number of
   reserved sectors`.** Leftover signatures from a previous filesystem, plus
   stale udev symlinks. The installer now runs `wipefs` and mounts with an

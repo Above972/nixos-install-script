@@ -3,9 +3,27 @@
 NixOS + Hyprland installer for a laptop that already runs Windows 11 in UEFI
 mode, with NVIDIA Optimus (Intel iGPU + RTX 3050 Laptop).
 
-The project lives in [`nixos-hyprland-setup/`](nixos-hyprland-setup/) — see
-[its README](nixos-hyprland-setup/README.md) for the full instructions.
+## Quick start — everything you have to type on the live ISO
 
-`nixos-hyprland-setup_2.zip` is the same folder, zipped, for downloading onto
-the live ISO in one go. It is generated from the files in this repo, so the
-two never diverge.
+```sh
+sudo -i
+nmtui
+nix-shell -p git --run "git clone https://github.com/Above972/nixos-install-script.git"
+cd nixos-install-script/nixos-hyprland-setup
+bash install.sh
+```
+
+That is the whole list. The installer asks for everything else and picks the
+disk from a numbered menu, so no device path has to be typed or remembered.
+
+If a previous attempt already created partitions, it finds them on whatever
+disk they ended up on and offers to resume — answer `1`. Nothing else changes.
+
+## More
+
+- [`nixos-hyprland-setup/`](nixos-hyprland-setup/) — the project itself
+- [Full instructions](nixos-hyprland-setup/README.md) — requirements, shrinking
+  Windows, NVIDIA Optimus notes, troubleshooting
+
+`nixos-hyprland-setup_2.zip` is the same folder zipped, for machines without
+git. It is generated from the files in this repo, so the two never diverge.
